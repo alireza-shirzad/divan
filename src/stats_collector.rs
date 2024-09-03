@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, num::NonZeroUsize};
 
 use crate::{
     counter::{KnownCounterKind, MaxCountUInt},
@@ -22,8 +22,8 @@ impl StatsCollector {
         self.path.pop().unwrap();
     }
 
-    pub(crate) fn add(&mut self, stats: Stats, entry: &AnyBenchEntry) {
-        self.stats.insert(self.path.join("."), JsonStats::from_stats(stats, entry));
+    pub(crate) fn add(&mut self, stats: Stats, entry: &AnyBenchEntry,thread_count:NonZeroUsize) {
+        self.stats.insert(self.path.join(",")+","+&thread_count.to_string(), JsonStats::from_stats(stats, entry));
     }
 
     pub(crate) fn write(&self) -> Result<(), Box<dyn Error>> {
@@ -46,17 +46,17 @@ impl StatsCollector {
 
 #[derive(serde::Serialize)]
 pub(crate) struct JsonStats {
-    pub display_name: String,
+    // pub display_name: String,
     pub sample_count: u32,
     pub iter_count: u64,
     pub time: StatsSet<u128>,
-    pub counts: HashMap<&'static str, StatsSet<MaxCountUInt>>,
+    // pub counts: HashMap<&'static str, StatsSet<MaxCountUInt>>,
 }
 
 impl JsonStats {
     pub(crate) fn from_stats(stats: Stats, entry: &AnyBenchEntry) -> Self {
         Self {
-            display_name: entry.display_name().to_string(),
+            // display_name: entry.display_name().to_string(),
             sample_count: stats.sample_count,
             iter_count: stats.iter_count,
             time: StatsSet {
@@ -65,19 +65,19 @@ impl JsonStats {
                 median: stats.time.median.picos,
                 mean: stats.time.mean.picos,
             },
-            counts: {
-                let mut map = HashMap::new();
-                if let Some(bytes) = &stats.counts[KnownCounterKind::Bytes as usize] {
-                    map.insert("bytes", bytes.clone());
-                }
-                if let Some(chars) = &stats.counts[KnownCounterKind::Chars as usize] {
-                    map.insert("chars", chars.clone());
-                }
-                if let Some(items) = &stats.counts[KnownCounterKind::Items as usize] {
-                    map.insert("items", items.clone());
-                }
-                map
-            },
+            // counts: {
+            //     let mut map = HashMap::new();
+            //     if let Some(bytes) = &stats.counts[KnownCounterKind::Bytes as usize] {
+            //         map.insert("bytes", bytes.clone());
+            //     }
+            //     if let Some(chars) = &stats.counts[KnownCounterKind::Chars as usize] {
+            //         map.insert("chars", chars.clone());
+            //     }
+            //     if let Some(items) = &stats.counts[KnownCounterKind::Items as usize] {
+            //         map.insert("items", items.clone());
+            //     }
+            //     map
+            // },
         }
     }
 }

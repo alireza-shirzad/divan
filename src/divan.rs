@@ -205,7 +205,7 @@ impl Divan {
             let is_last = i == tree.len() - 1;
 
             let name = child.display_name();
-            stats_collector.enter_group(child.raw_name().to_string());
+            stats_collector.enter_group(child.display_name().to_string());
 
             let child_options = child.bench_options();
 
@@ -337,7 +337,7 @@ impl Divan {
             let stats = bench_context.compute_stats();
 
             tree_painter.finish_leaf(is_last, &stats, self.bytes_format);
-            stats_collector.add(stats, &bench_entry);
+            stats_collector.add(stats, &bench_entry,thread_count);
         }
 
         if has_thread_branches {
