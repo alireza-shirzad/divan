@@ -210,7 +210,9 @@ mod tests {
         test!(1, &[1]);
         test!(42, &[42]);
 
-        test!([0; 0], &[]);
+        let left = [0; 0];
+        let right: &[usize] = &[];
+        test!(left, right);
         test!([0], &[0]);
         test!([0, 0], &[0]);
 

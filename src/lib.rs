@@ -33,6 +33,7 @@ mod time;
 mod tree_painter;
 
 pub mod counter;
+mod json_painter;
 
 /// `use divan::prelude::*;` to import common items.
 pub mod prelude {

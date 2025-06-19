@@ -1,10 +1,13 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::{borrow::Cow, cell::RefCell, fmt, num::NonZeroUsize, time::Duration};
+use std::{
+    borrow::Cow, cell::RefCell, fmt, fs, num::NonZeroUsize, time::Duration,
+};
 
 use clap::ColorChoice;
 use regex::Regex;
 
+use crate::tree_painter::TreeColumn;
 use crate::{
     benchmark::BenchOptions,
     config::{
@@ -16,8 +19,8 @@ use crate::{
         ItemsCount, MaxCountUInt, PrivBytesFormat,
     },
     entry::{AnyBenchEntry, BenchEntryRunner, EntryTree},
+    json_painter::JsonPainter,
     time::{Timer, TimerKind},
-    tree_painter::{TreeColumn, TreePainter},
     util::{self, thread::ThreadPool, IntoRegex},
     Bencher,
 };
@@ -176,12 +179,9 @@ impl Divan {
             [0; TreeColumn::COUNT]
         };
 
-        let tree_painter = RefCell::new(TreePainter::new(
-            EntryTree::max_name_span(&tree, 0),
-            column_widths,
-        ));
+        let json_painter = RefCell::new(JsonPainter::new());
 
-        self.run_tree(action, &tree, &shared_context, None, &tree_painter);
+        self.run_tree(action, &tree, &shared_context, None, &json_painter);
     }
 
     /// Emits the entries in `tree` for the purpose of `--list --format terse`.
@@ -231,7 +231,7 @@ impl Divan {
         tree: &[EntryTree],
         shared_context: &SharedContext,
         parent_options: Option<&BenchOptions>,
-        tree_painter: &RefCell<TreePainter>,
+        json_painter: &RefCell<JsonPainter>,
     ) {
         for (i, child) in tree.iter().enumerate() {
             let is_last = i == tree.len() - 1;
@@ -261,26 +261,27 @@ impl Divan {
                     args.as_deref(),
                     shared_context,
                     options,
-                    tree_painter,
+                    json_painter,
                     is_last,
                 ),
                 EntryTree::Parent { children, .. } => {
-                    tree_painter.borrow_mut().start_parent(name, is_last);
+                    json_painter.borrow_mut().start_parent(name, is_last);
 
                     self.run_tree(
                         action,
                         children,
                         shared_context,
                         options,
-                        tree_painter,
+                        json_painter,
                     );
 
-                    tree_painter.borrow_mut().finish_parent();
+                    json_painter.borrow_mut().finish_parent();
                 }
             }
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn run_bench_entry(
         &self,
         action: Action,
@@ -288,7 +289,7 @@ impl Divan {
         bench_arg_names: Option<&[&&str]>,
         shared_context: &SharedContext,
         entry_options: Option<&BenchOptions>,
-        tree_painter: &RefCell<TreePainter>,
+        tree_painter: &RefCell<JsonPainter>,
         is_last_entry: bool,
     ) {
         use crate::benchmark::BenchContext;
@@ -380,8 +381,8 @@ impl Divan {
 
                     if !bench_context.did_run {
                         eprintln!(
-                        "warning: No benchmark function registered for '{bench_display_name}'"
-                    );
+                            "warning: No benchmark function registered for '{bench_display_name}'"
+                        );
                     }
 
                     let should_compute_stats = bench_context.did_run
