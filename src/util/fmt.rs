@@ -105,7 +105,10 @@ impl fmt::Display for DisplayThroughput<'_> {
 }
 
 /// Converts a value to the appropriate scale.
-fn scale_value(value: f64, bytes_format: BytesFormat) -> (f64, Scale) {
+pub(crate) fn scale_value(
+    value: f64,
+    bytes_format: BytesFormat,
+) -> (f64, Scale) {
     let starts = scale_starts(bytes_format);
 
     let scale = if value.is_infinite() || value < starts[1] {

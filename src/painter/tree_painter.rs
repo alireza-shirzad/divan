@@ -1,13 +1,13 @@
 //! Happy little trees.
 
-use std::{io::Write, iter::repeat};
-
+use crate::painter::Painter;
 use crate::{
     alloc::{AllocOp, AllocTally},
     counter::{AnyCounter, BytesFormat, KnownCounterKind},
     stats::{Stats, StatsSet},
     util,
 };
+use std::{io::Write, iter::repeat};
 
 const TREE_COL_BUF: usize = 2;
 
@@ -43,11 +43,15 @@ impl TreePainter {
             write_buf: String::new(),
         }
     }
+
+    fn has_columns(&self) -> bool {
+        !self.column_widths.iter().all(|&w| w == 0)
+    }
 }
 
-impl TreePainter {
+impl Painter for TreePainter {
     /// Enter a parent node.
-    pub fn start_parent(&mut self, name: &str, is_last: bool) {
+    fn start_parent(&mut self, name: &str, is_last: bool) {
         let is_top_level = self.depth == 0;
         let has_columns = self.has_columns();
 
@@ -101,7 +105,7 @@ impl TreePainter {
     }
 
     /// Exit the current parent node.
-    pub fn finish_parent(&mut self) {
+    fn finish_parent(&mut self) {
         self.depth -= 1;
 
         // Improve legibility for multiple top-level parents.
@@ -121,7 +125,7 @@ impl TreePainter {
     /// Indicate that the next child node was ignored.
     ///
     /// This semantically combines start/finish operations.
-    pub fn ignore_leaf(&mut self, name: &str, is_last: bool) {
+    fn ignore_leaf(&mut self, name: &str, is_last: bool) {
         let has_columns = self.has_columns();
 
         let buf = &mut self.write_buf;
@@ -143,7 +147,7 @@ impl TreePainter {
     }
 
     /// Enter a leaf node.
-    pub fn start_leaf(&mut self, name: &str, is_last: bool) {
+    fn start_leaf(&mut self, name: &str, is_last: bool) {
         let has_columns = self.has_columns();
 
         let buf = &mut self.write_buf;
@@ -169,12 +173,12 @@ impl TreePainter {
     }
 
     /// Exit the current leaf node.
-    pub fn finish_empty_leaf(&mut self) {
+    fn finish_empty_leaf(&mut self) {
         println!();
     }
 
     /// Exit the current leaf node, emitting statistics.
-    pub fn finish_leaf(
+    fn finish_leaf(
         &mut self,
         is_last: bool,
         stats: &Stats,
@@ -414,10 +418,6 @@ impl TreePainter {
             }
         }
     }
-
-    fn has_columns(&self) -> bool {
-        !self.column_widths.iter().all(|&w| w == 0)
-    }
 }
 
 /// Columns of the table next to the tree.
@@ -457,7 +457,7 @@ impl TreeColumn {
         self == last
     }
 
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Fastest => "fastest",
             Self::Slowest => "slowest",
@@ -475,7 +475,7 @@ impl TreeColumn {
     }
 
     #[inline]
-    fn get_stat<T>(self, stats: &StatsSet<T>) -> Option<&T> {
+    pub fn get_stat<T>(self, stats: &StatsSet<T>) -> Option<&T> {
         match self {
             Self::Fastest => Some(&stats.fastest),
             Self::Slowest => Some(&stats.slowest),
@@ -487,11 +487,11 @@ impl TreeColumn {
 }
 
 #[derive(Default)]
-struct TreeColumnData<T>([T; TreeColumn::COUNT]);
+pub(crate) struct TreeColumnData<T>([T; TreeColumn::COUNT]);
 
 impl<T> TreeColumnData<T> {
     #[inline]
-    fn from_first(value: T) -> Self
+    pub(crate) fn from_first(value: T) -> Self
     where
         Self: Default,
     {
@@ -501,7 +501,7 @@ impl<T> TreeColumnData<T> {
     }
 
     #[inline]
-    fn from_fn<F>(f: F) -> Self
+    pub(crate) fn from_fn<F>(f: F) -> Self
     where
         F: FnMut(TreeColumn) -> T,
     {
@@ -511,7 +511,7 @@ impl<T> TreeColumnData<T> {
 
 impl TreeColumnData<&str> {
     /// Writes the column data into the buffer.
-    fn write(
+    pub(crate) fn write(
         &self,
         buf: &mut String,
         column_widths: &mut [usize; TreeColumn::COUNT],

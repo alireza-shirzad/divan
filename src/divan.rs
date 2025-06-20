@@ -1,13 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::{
-    borrow::Cow, cell::RefCell, fmt, fs, num::NonZeroUsize, time::Duration,
-};
-
 use clap::ColorChoice;
 use regex::Regex;
+use std::{borrow::Cow, cell::RefCell, fmt, num::NonZeroUsize, time::Duration};
 
-use crate::tree_painter::TreeColumn;
 use crate::{
     benchmark::BenchOptions,
     config::{
@@ -19,7 +15,9 @@ use crate::{
         ItemsCount, MaxCountUInt, PrivBytesFormat,
     },
     entry::{AnyBenchEntry, BenchEntryRunner, EntryTree},
-    json_painter::JsonPainter,
+    painter::json_painter::JsonPainter,
+    painter::tree_painter::{TreeColumn, TreePainter},
+    painter::Painter,
     time::{Timer, TimerKind},
     util::{self, thread::ThreadPool, IntoRegex},
     Bencher,
@@ -179,9 +177,18 @@ impl Divan {
             [0; TreeColumn::COUNT]
         };
 
-        let json_painter = RefCell::new(JsonPainter::new());
+        let tree_painter =
+            TreePainter::new(EntryTree::max_name_span(&tree, 0), column_widths);
 
-        self.run_tree(action, &tree, &shared_context, None, &json_painter);
+        let json_painter = JsonPainter::new();
+
+        if false {
+            let painter = RefCell::new(tree_painter);
+            self.run_tree(action, &tree, &shared_context, None, &painter);
+        } else {
+            let painter = RefCell::new(json_painter);
+            self.run_tree(action, &tree, &shared_context, None, &painter);
+        }
     }
 
     /// Emits the entries in `tree` for the purpose of `--list --format terse`.
@@ -231,7 +238,7 @@ impl Divan {
         tree: &[EntryTree],
         shared_context: &SharedContext,
         parent_options: Option<&BenchOptions>,
-        json_painter: &RefCell<JsonPainter>,
+        painter: &RefCell<impl Painter>,
     ) {
         for (i, child) in tree.iter().enumerate() {
             let is_last = i == tree.len() - 1;
@@ -261,21 +268,21 @@ impl Divan {
                     args.as_deref(),
                     shared_context,
                     options,
-                    json_painter,
+                    painter,
                     is_last,
                 ),
                 EntryTree::Parent { children, .. } => {
-                    json_painter.borrow_mut().start_parent(name, is_last);
+                    painter.borrow_mut().start_parent(name, is_last);
 
                     self.run_tree(
                         action,
                         children,
                         shared_context,
                         options,
-                        json_painter,
+                        painter,
                     );
 
-                    json_painter.borrow_mut().finish_parent();
+                    painter.borrow_mut().finish_parent();
                 }
             }
         }
@@ -289,7 +296,7 @@ impl Divan {
         bench_arg_names: Option<&[&&str]>,
         shared_context: &SharedContext,
         entry_options: Option<&BenchOptions>,
-        tree_painter: &RefCell<JsonPainter>,
+        painter: &RefCell<impl Painter>,
         is_last_entry: bool,
     ) {
         use crate::benchmark::BenchContext;
@@ -307,17 +314,15 @@ impl Divan {
         };
 
         if self.should_ignore(options.ignore.unwrap_or_default()) {
-            tree_painter
-                .borrow_mut()
-                .ignore_leaf(entry_display_name, is_last_entry);
+            painter.borrow_mut().ignore_leaf(entry_display_name, is_last_entry);
             return;
         }
 
         // Paint empty leaf when simply listing.
         if action.is_list() {
-            let mut tree_painter = tree_painter.borrow_mut();
-            tree_painter.start_leaf(entry_display_name, is_last_entry);
-            tree_painter.finish_empty_leaf();
+            let mut painter = painter.borrow_mut();
+            painter.start_leaf(entry_display_name, is_last_entry);
+            painter.finish_empty_leaf();
             return;
         }
 
@@ -349,11 +354,11 @@ impl Divan {
              is_last_bench: bool,
              with_bencher: &dyn Fn(Bencher)| {
                 if has_thread_branches {
-                    tree_painter
+                    painter
                         .borrow_mut()
                         .start_parent(bench_display_name, is_last_bench);
                 } else {
-                    tree_painter
+                    painter
                         .borrow_mut()
                         .start_leaf(bench_display_name, is_last_bench);
                 }
@@ -366,7 +371,7 @@ impl Divan {
                     };
 
                     if has_thread_branches {
-                        tree_painter.borrow_mut().start_leaf(
+                        painter.borrow_mut().start_leaf(
                             &format!("t={thread_count}"),
                             is_last_thread_count,
                         );
@@ -390,18 +395,18 @@ impl Divan {
 
                     if should_compute_stats {
                         let stats = bench_context.compute_stats();
-                        tree_painter.borrow_mut().finish_leaf(
+                        painter.borrow_mut().finish_leaf(
                             is_last_thread_count,
                             &stats,
                             self.bytes_format,
                         );
                     } else {
-                        tree_painter.borrow_mut().finish_empty_leaf();
+                        painter.borrow_mut().finish_empty_leaf();
                     }
                 }
 
                 if has_thread_branches {
-                    tree_painter.borrow_mut().finish_parent();
+                    painter.borrow_mut().finish_parent();
                 }
             };
 
@@ -411,7 +416,7 @@ impl Divan {
             }
 
             BenchEntryRunner::Args(bench_runner) => {
-                tree_painter
+                painter
                     .borrow_mut()
                     .start_parent(entry_display_name, is_last_entry);
 
@@ -429,7 +434,7 @@ impl Divan {
                     });
                 }
 
-                tree_painter.borrow_mut().finish_parent();
+                painter.borrow_mut().finish_parent();
             }
         }
     }
