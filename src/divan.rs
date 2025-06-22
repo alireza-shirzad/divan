@@ -178,7 +178,7 @@ impl Divan {
         };
 
         // TODO(2025-06-22): make is so you can choose the output format somehow ~kat
-        if false {
+        if true {
             let tree_painter = TreePainter::new(
                 EntryTree::max_name_span(&tree, 0),
                 column_widths,

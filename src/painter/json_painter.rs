@@ -1,6 +1,6 @@
 use crate::alloc::{AllocOp, AllocTally};
 use crate::counter::{AnyCounter, BytesFormat, KnownCounterKind};
-use crate::painter::tree_painter::TreeColumn;
+use crate::painter::tree_painter::{TreeColumn, TreeColumnData};
 use crate::painter::Painter;
 use crate::stats::Stats;
 use crate::util::fmt::{format_bytes, format_f64};
@@ -28,54 +28,60 @@ impl JsonPainter {
     }
 
     fn reset(&mut self) {
+        // TODO(2025-06-19): should these stay? ~kat
+        // Sanity checks
+
         // destructuring to make sure reset doesn't get out of sync with the struct
         // compiler will complain if a new field is added
         Self { depth: _, buf: _, is_last: _, parents: _, first: _ } = *self;
 
-        // depth: 1,
-        // TODO(2025-06-19): should this be an assert exist? ~kat
-        // Sanity check
+        // make sure the all the brackets are closed,
+        // `1` because we start with the top level brackets
         assert_eq!(self.depth, 1);
-        self.depth = 1;
-        // is_last: vec![],
-        // TODO(2025-06-19): should this be an assert exist? ~kat
-        // Sanity check
-        assert_eq!(
-            self.is_last.len(),
-            0,
+        assert!(self.buf.ends_with('}'),);
+        // make sure there's nothing left to pop in `is_last`
+        assert!(
+            self.is_last.is_empty(),
             "contents of is_last: {:?}",
             self.is_last
         );
-        // parents: vec![],
-        // TODO(2025-06-19): should this be an assert exist? ~kat
-        // Sanity check
-        assert_eq!(
-            self.parents.len(),
-            0,
+        // make sure there's no parents left
+        assert!(
+            self.parents.is_empty(),
             "contents of parents: {:?}",
             self.parents
         );
-        // first: None,
-        // TODO(2025-06-19): should this be an assert exist? ~kat
-        // Sanity check
+        // make sure at least one entry was inserted
         assert!(self.first.is_some());
-        let first = self.first.clone().unwrap();
-        self.first = None;
 
         // TODO(2025-06-22):
         //  what to do with the final output? ~kat
         //  I'd imagine if someone wants JSON then
-        //  they'd expect it to be as a file somewhere
-        let path = format!("{first}.json");
+        //  they'd expect it to be as a file somewhere.
+        //  For now, store it in the cwd
+        //  (examples folder if you're running the examples)
+        let first = self.first.clone().unwrap();
+        let path = format!("{first}_{}-lines.json", self.buf.lines().count());
         std::fs::write(&path, &self.buf).unwrap();
         let path = std::fs::canonicalize(path).unwrap();
         let path = path.to_str().unwrap();
         println!("{path}");
         // println!("{}", self.buf);
 
-        // buf: String::from("{\n"),
+        self.reset_unchecked();
+    }
+
+    fn reset_unchecked(&mut self) {
+        // destructuring to make sure reset_unchecked doesn't get out of sync with the struct
+        // compiler will complain if a new field is added
+        Self { depth: _, buf: _, is_last: _, parents: _, first: _ } = *self;
+
+        self.depth = 1;
         self.buf.clear();
         self.buf.push_str("{\n");
+        self.is_last.clear();
+        self.parents.clear();
+        self.first = None;
     }
 }
 
@@ -128,7 +134,10 @@ impl Painter for JsonPainter {
                 2. race condition
                 3. my code has issues
                 Possible solution:
-                if the tests are a problem then add new \"finalize\" function which will return the buffer and reset the internal states, but this probably breaks the API
+                if the tests are a problem then add new \"finalize\" function
+                which will return the buffer and reset the internal states,
+                but this probably breaks the API
+
                 json (not yet parsed) buffer: {}",
                 self.buf
             );
@@ -359,6 +368,15 @@ impl Painter for JsonPainter {
                 .any(|(a, b)| a.is_some() || b.is_some())
             {
                 add_comma_if_required(&mut lines);
+
+                // TODO(2025-06-22):
+                //  hash, sort, string have duplicate "alloc"s,
+                //  and they can have different information,
+                //  im not sure why dups exist
+                //  and idk why the json crate isn't throwing an error
+                //  The second alloc is dealloc?
+                //  `[AllocOp::Alloc, AllocOp::Dealloc, AllocOp::Grow, AllocOp::Shrink]`
+                //  ~kat
                 lines.push(format!(r#"{tab}"alloc": {{"#));
 
                 // stats.alloc.count
@@ -397,6 +415,94 @@ impl Painter for JsonPainter {
                     // end size
                     lines.push(format!("{tab}{tab}}}"));
                 }
+
+                // // Write time stats with iter and sample counts.
+                // TreeColumnData::from_fn(|column| -> String {
+                //     let stat: &dyn ToString = match column {
+                //         TreeColumn::Fastest => &stats.time.fastest,
+                //         TreeColumn::Slowest => &stats.time.slowest,
+                //         TreeColumn::Median => &stats.time.median,
+                //         TreeColumn::Mean => &stats.time.mean,
+                //         TreeColumn::Samples => &stats.sample_count,
+                //         TreeColumn::Iters => &stats.iter_count,
+                //     };
+                //     stat.to_string()
+                // })
+                // .as_ref::<str>()
+                // .write(buf, &mut self.column_widths);
+                //
+                // println!("{buf}");
+
+                // // Write counter stats.
+                // let counter_stats = serialized_counters.map(TreeColumnData);
+                // for counter_kind in KnownCounterKind::ALL {
+                //     let counter_stats =
+                //         counter_stats[counter_kind as usize].as_ref::<str>();
+                //
+                //     // Skip empty rows.
+                //     if counter_stats.0.iter().all(|s| s.is_empty()) {
+                //         continue;
+                //     }
+                //
+                //     prep_buffer(buf, &mut self.max_name_span);
+                //
+                //     counter_stats.write(buf, &mut self.column_widths);
+                //     println!("{buf}");
+                // }
+
+                // // Write max allocated bytes.
+                // if serialized_max_alloc_counts.is_some()
+                //     || serialized_max_alloc_sizes.is_some()
+                // {
+                //     prep_buffer(buf, &mut self.max_name_span);
+                //
+                //     TreeColumnData::from_first("max alloc:")
+                //         .write(buf, &mut self.column_widths);
+                //     println!("{buf}");
+                //
+                //     for serialized in [
+                //         serialized_max_alloc_counts.as_ref(),
+                //         serialized_max_alloc_sizes.as_ref(),
+                //     ]
+                //         .into_iter()
+                //         .flatten()
+                //     {
+                //         prep_buffer(buf, &mut self.max_name_span);
+                //
+                //         TreeColumnData::from_fn(|column| {
+                //             serialized[column as usize].as_str()
+                //         })
+                //             .write(buf, &mut self.column_widths);
+                //
+                //         println!("{buf}");
+                //     }
+                // }
+
+                // // Write allocation tallies.
+                // for op in
+                //     [AllocOp::Alloc, AllocOp::Dealloc, AllocOp::Grow, AllocOp::Shrink]
+                // {
+                //     let Some(tallies) = &serialized_alloc_tallies[op as usize] else {
+                //         continue;
+                //     };
+                //
+                //     prep_buffer(buf, &mut self.max_name_span);
+                //
+                //     TreeColumnData::from_first(op.prefix())
+                //         .write(buf, &mut self.column_widths);
+                //     println!("{buf}");
+                //
+                //     for value in tallies.as_array() {
+                //         prep_buffer(buf, &mut self.max_name_span);
+                //
+                //         TreeColumnData::from_fn(|column| {
+                //             value[column as usize].as_str()
+                //         })
+                //             .write(buf, &mut self.column_widths);
+                //
+                //         println!("{buf}");
+                //     }
+                // }
 
                 // end alloc
                 lines.push(format!("{tab}}}"));
