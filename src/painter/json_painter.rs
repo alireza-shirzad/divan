@@ -4,6 +4,7 @@ use crate::painter::tree_painter::TreeColumn;
 use crate::painter::Painter;
 use crate::stats::Stats;
 use crate::util::fmt::{format_bytes, format_f64};
+use std::collections::HashMap;
 use std::fmt::Write;
 
 pub(crate) struct JsonPainter {
@@ -28,15 +29,16 @@ impl JsonPainter {
 
     fn reset(&mut self) {
         // destructuring to make sure reset doesn't get out of sync with the struct
+        // compiler will complain if a new field is added
         Self { depth: _, buf: _, is_last: _, parents: _, first: _ } = *self;
 
         // depth: 1,
-        // TODO(2025-06-19): should this be an assert? ~kat
+        // TODO(2025-06-19): should this be an assert exist? ~kat
         // Sanity check
         assert_eq!(self.depth, 1);
         self.depth = 1;
         // is_last: vec![],
-        // TODO(2025-06-19): should this be an assert? ~kat
+        // TODO(2025-06-19): should this be an assert exist? ~kat
         // Sanity check
         assert_eq!(
             self.is_last.len(),
@@ -45,7 +47,7 @@ impl JsonPainter {
             self.is_last
         );
         // parents: vec![],
-        // TODO(2025-06-19): should this be an assert? ~kat
+        // TODO(2025-06-19): should this be an assert exist? ~kat
         // Sanity check
         assert_eq!(
             self.parents.len(),
@@ -54,12 +56,22 @@ impl JsonPainter {
             self.parents
         );
         // first: None,
-        // TODO(2025-06-19): should this be an assert? ~kat
+        // TODO(2025-06-19): should this be an assert exist? ~kat
         // Sanity check
         assert!(self.first.is_some());
+        let first = self.first.clone().unwrap();
         self.first = None;
 
-        println!("{}", self.buf);
+        // TODO(2025-06-22):
+        //  what to do with the final output? ~kat
+        //  I'd imagine if someone wants JSON then
+        //  they'd expect it to be as a file somewhere
+        let path = format!("{first}.json");
+        std::fs::write(&path, &self.buf).unwrap();
+        let path = std::fs::canonicalize(path).unwrap();
+        let path = path.to_str().unwrap();
+        println!("{path}");
+        // println!("{}", self.buf);
 
         // buf: String::from("{\n"),
         self.buf.clear();
@@ -156,6 +168,7 @@ impl Painter for JsonPainter {
         bytes_format: BytesFormat,
     ) {
         let tab = pad_by(1);
+        let pad = pad_by(self.depth);
         let Some(is_last) = self.is_last.pop() else {
             println!("Err popping value from is_last in finish_leaf");
             return;
@@ -391,64 +404,37 @@ impl Painter for JsonPainter {
         }
 
         if serialized_counters.iter().any(|x| x.iter().any(Option::is_some)) {
-            // group into counters
             let counters = serialized_counters
-                .iter()
+                .into_iter()
                 .flatten()
                 .flatten()
-                .map(|(x, _, _)| x)
-                .fold(vec![], |mut v, x| {
-                    if !v.contains(x) {
-                        v.push(*x);
-                    }
+                .map(|(x, a, b)| (x.to_string(), (a.name(), b)))
+                .fold(HashMap::new(), |mut map: HashMap<_, Vec<_>>, (k, v)| {
+                    map.entry(k).or_default().push(v);
 
-                    v
+                    map
                 });
 
-            // TODO(2025-06-22):
-            //  could this be optimized someway? ~kat
-            //  KnownCounterKind doesn't implement Hash (for hashmap)
-            //  or Ord (for btreemap).
-            for ss in serialized_counters {
-                for counter in &counters {
-                    // skip if it doesn't have any entries
-                    if !ss.iter().any(Option::is_some) {
-                        continue;
-                    }
+            for (counter, values) in counters {
+                add_comma_if_required(&mut lines);
+
+                // stats.{counter}
+                lines.push(format!(r#"{tab}"{counter}": {{"#));
+
+                for (column, value) in values {
                     add_comma_if_required(&mut lines);
-
-                    // get all the items for the current counter
-                    let ss = ss
-                        .iter()
-                        .flatten()
-                        .filter(|(x, _, _)| x == counter)
-                        .map(|(_, a, b)| (a, b))
-                        .collect::<Vec<_>>();
-
-                    // skip if the counter doesn't have any items
-                    if ss.is_empty() {
-                        continue;
-                    }
-
-                    // stats.{counter}
-                    lines.push(format!(r#"{tab}"{counter}": {{"#));
-
-                    for (column, value) in ss {
-                        add_comma_if_required(&mut lines);
-                        lines.push(format!(
-                            r#"{tab}{tab}"{}": "{value}""#,
-                            column.name()
-                        ));
-                    }
-
-                    // end {counter}
-                    lines.push(format!("{tab}}}"));
+                    lines.push(format!(r#"{tab}{tab}"{column}": "{value}""#));
                 }
+
+                // end {counter}
+                lines.push(format!("{tab}}}"));
             }
         }
 
         // end stats
         lines.push(String::from("}"));
+
+        let lines = lines.iter().map(|s| format!("{pad}{s}\n"));
 
         self.buf.extend(lines);
 
@@ -465,7 +451,8 @@ impl Painter for JsonPainter {
 fn add_comma_if_required(lines: &mut [String]) {
     let len = lines.len() - 1;
 
-    let last = lines.get_mut(len).expect("");
+    let last =
+        lines.get_mut(len).expect("Lines should have at least one entry");
     if last.ends_with('{') {
     } else if !last.ends_with(',') {
         last.push(',');

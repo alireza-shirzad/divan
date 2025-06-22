@@ -177,15 +177,16 @@ impl Divan {
             [0; TreeColumn::COUNT]
         };
 
-        let tree_painter =
-            TreePainter::new(EntryTree::max_name_span(&tree, 0), column_widths);
-
-        let json_painter = JsonPainter::new();
-
+        // TODO(2025-06-22): make is so you can choose the output format somehow ~kat
         if false {
+            let tree_painter = TreePainter::new(
+                EntryTree::max_name_span(&tree, 0),
+                column_widths,
+            );
             let painter = RefCell::new(tree_painter);
             self.run_tree(action, &tree, &shared_context, None, &painter);
         } else {
+            let json_painter = JsonPainter::new();
             let painter = RefCell::new(json_painter);
             self.run_tree(action, &tree, &shared_context, None, &painter);
         }
