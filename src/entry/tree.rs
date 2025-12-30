@@ -7,7 +7,7 @@ use crate::{
     entry::{
         AnyBenchEntry, EntryLocation, EntryMeta, GenericBenchEntry, GroupEntry,
     },
-    tree_painter::TreeColumn,
+    painter::tree_painter::TreeColumn,
     util::sort::natural_cmp,
 };
 

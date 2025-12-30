@@ -1,5 +1,3 @@
-use std::any::TypeId;
-
 use crate::{
     counter::{
         BytesCount, BytesFormat, CharsCount, CyclesCount, IntoCounter,
@@ -8,6 +6,8 @@ use crate::{
     time::FineDuration,
     util::{fmt::DisplayThroughput, ty::TypeCast},
 };
+use std::any::TypeId;
+use std::fmt::{Display, Formatter};
 
 /// Type-erased `Counter`.
 ///
@@ -92,6 +92,21 @@ pub(crate) enum KnownCounterKind {
     Chars,
     Cycles,
     Items,
+}
+
+impl Display for KnownCounterKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Bytes => "bytes",
+                Self::Chars => "chars",
+                Self::Cycles => "cycles",
+                Self::Items => "items",
+            }
+        )
+    }
 }
 
 impl KnownCounterKind {

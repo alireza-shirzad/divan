@@ -30,9 +30,9 @@ mod divan;
 mod entry;
 mod stats;
 mod time;
-mod tree_painter;
 
 pub mod counter;
+mod painter;
 
 /// `use divan::prelude::*;` to import common items.
 pub mod prelude {
