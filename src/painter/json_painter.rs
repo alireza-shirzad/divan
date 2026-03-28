@@ -30,26 +30,47 @@ impl JsonPainter {
     }
     pub fn finalize(&self) {
         // TODO(2025-06-27): What to do if the function fails?
-        let json = if self.minify {
-            json::stringify(JsonValue::try_from(self).unwrap())
-        } else {
-            json::stringify_pretty(JsonValue::try_from(self).unwrap(), 3)
-        };
         if self.final_print {
-            // TODO(2025-06-22):
-            //  what to do with the final output? ~kat
-            //  I'd imagine if someone wants JSON then
-            //  they'd expect it to be as a file somewhere.
-            //  For now, store it in the cwd
-            //  (examples folder if you're running the examples).
-            //  Also, what to do if the function fails?
             let first = self.data.iter().next().unwrap().0.as_str();
-            let path =
-                format!("{first}_{}-lines.json", json.as_str().lines().count());
+            let path = format!("{first}.json");
+            let mut merged = Self::load_existing_json(&path);
+            let current = JsonValue::try_from(self).unwrap();
+            Self::merge_json_value(&mut merged, current);
+
+            let json = if self.minify {
+                json::stringify(merged)
+            } else {
+                json::stringify_pretty(merged, 3)
+            };
+
             std::fs::write(&path, json.as_str()).unwrap();
             let path = std::fs::canonicalize(path).unwrap();
             let path = path.to_str().unwrap();
             println!("{path}");
+        }
+    }
+
+    fn load_existing_json(path: &str) -> JsonValue {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|contents| json::parse(&contents).ok())
+            .filter(JsonValue::is_object)
+            .unwrap_or_else(JsonValue::new_object)
+    }
+
+    fn merge_json_value(dst: &mut JsonValue, src: JsonValue) {
+        match (dst, src) {
+            (JsonValue::Object(dst_obj), JsonValue::Object(src_obj)) => {
+                let src = JsonValue::Object(src_obj);
+                for (key, value) in src.entries() {
+                    if let Some(existing) = dst_obj.get_mut(key) {
+                        Self::merge_json_value(existing, value.clone());
+                    } else {
+                        dst_obj.insert(key, value.clone());
+                    }
+                }
+            }
+            (dst_value, src_value) => *dst_value = src_value,
         }
     }
 }

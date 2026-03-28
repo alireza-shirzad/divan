@@ -15,6 +15,7 @@ use crate::{
         ItemsCount, MaxCountUInt, PrivBytesFormat,
     },
     entry::{AnyBenchEntry, BenchEntryRunner, EntryTree},
+    painter::CombinedPainter,
     painter::json_painter::JsonPainter,
     painter::tree_painter::{TreeColumn, TreePainter},
     painter::Painter,
@@ -177,17 +178,18 @@ impl Divan {
             [0; TreeColumn::COUNT]
         };
 
-        // TODO(2025-06-22): make is so you can choose the output format somehow ~kat
-        if false {
-            let tree_painter = TreePainter::new(
-                EntryTree::max_name_span(&tree, 0),
-                column_widths,
-            );
-            let painter = RefCell::new(tree_painter);
+        let tree_painter = TreePainter::new(
+            EntryTree::max_name_span(&tree, 0),
+            column_widths,
+        );
+
+        if action.is_bench() {
+            let json_painter = JsonPainter::new();
+            let painter =
+                RefCell::new(CombinedPainter::new(tree_painter, json_painter));
             self.run_tree(action, &tree, &shared_context, None, &painter);
         } else {
-            let json_painter = JsonPainter::new();
-            let painter = RefCell::new(json_painter);
+            let painter = RefCell::new(tree_painter);
             self.run_tree(action, &tree, &shared_context, None, &painter);
         }
     }
