@@ -29,21 +29,30 @@ impl JsonPainter {
         }
     }
     pub fn finalize(&self) {
+        self.flush_to_disk(true);
+    }
+
+    fn flush_to_disk(&self, print_path: bool) {
+        if !self.final_print || self.data.is_empty() {
+            return;
+        }
+
         // TODO(2025-06-27): What to do if the function fails?
-        if self.final_print {
-            let first = self.data.iter().next().unwrap().0.as_str();
-            let path = format!("{first}.json");
-            let mut merged = Self::load_existing_json(&path);
-            let current = JsonValue::try_from(self).unwrap();
-            Self::merge_json_value(&mut merged, current);
+        let first = self.data.iter().next().unwrap().0.as_str();
+        let path = std::env::var("DIVAN_JSON_PATH")
+            .unwrap_or_else(|_| format!("{first}.json"));
+        let mut merged = Self::load_existing_json(&path);
+        let current = JsonValue::try_from(self).unwrap();
+        Self::merge_json_value(&mut merged, current);
 
-            let json = if self.minify {
-                json::stringify(merged)
-            } else {
-                json::stringify_pretty(merged, 3)
-            };
+        let json = if self.minify {
+            json::stringify(merged)
+        } else {
+            json::stringify_pretty(merged, 3)
+        };
 
-            std::fs::write(&path, json.as_str()).unwrap();
+        std::fs::write(&path, json.as_str()).unwrap();
+        if print_path {
             let path = std::fs::canonicalize(path).unwrap();
             let path = path.to_str().unwrap();
             println!("{path}");
@@ -324,6 +333,7 @@ impl Painter for JsonPainter {
         };
 
         x.insert(name.to_string(), BenchmarkNode::BenchmarkChild(None));
+        self.flush_to_disk(false);
 
         if self.debug {
             println!(
@@ -372,6 +382,7 @@ impl Painter for JsonPainter {
         };
 
         *parent = BenchmarkNode::BenchmarkChild(None);
+        self.flush_to_disk(false);
     }
 
     fn finish_leaf(
@@ -468,6 +479,7 @@ impl Painter for JsonPainter {
         };
 
         *parent = BenchmarkNode::BenchmarkChild(Some(Box::new(stats)));
+        self.flush_to_disk(false);
     }
 }
 
